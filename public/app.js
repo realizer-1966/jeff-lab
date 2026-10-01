@@ -1,0 +1,263 @@
+// jeff-lab - server connect + adapter catalog + question editor + decide
+import { CATALOG, DEFAULT_SRV, DEFAULT_KEY, LS_KEY, LS_SRV, refreshInstalled } from './catalog.js?v=1';
+
+const $ = (id) => document.getElementById(id);
+const srvurl = $('srvurl'), srvkey = $('srvkey'), connect = $('connect');
+const hasSrvUI = !!connect;
+const srvstatus = $('srvstatus'), status = $('status');
+const run = $('run'), models = $('models');
+const qjson = $('qjson'), presetSel = $('preset');
+
+let srv = localStorage.getItem(LS_SRV) || DEFAULT_SRV;
+// 구버전 http 저장값 마이그레이션 - mixed content로 브라우저 fetch 불가
+if (srv.startsWith('http://')) srv = DEFAULT_SRV;
+let key = localStorage.getItem(LS_KEY) || DEFAULT_KEY;
+let installedModels = null;
+let selectedModel = null;
+let orders = 1;
+
+if (srvurl) srvurl.value = srv;
+if (srvkey) srvkey.value = key;
+
+// orders 토글
+function setOrders(n) {
+  orders = n;
+  $('orders1').classList.toggle('on', n === 1);
+  $('orders2').classList.toggle('on', n === 2);
+}
+$('orders1').addEventListener('click', () => setOrders(1));
+$('orders2').addEventListener('click', () => setOrders(2));
+
+hasSrvUI && connect.addEventListener('click', async () => {
+  srv = srvurl.value.trim().replace(/\/$/, '');
+  key = srvkey.value || '';
+  localStorage.setItem(LS_SRV, srv);
+  if (key) localStorage.setItem(LS_KEY, key); else localStorage.removeItem(LS_KEY);
+  srvstatus.textContent = '연결 시도 중...';
+  srvstatus.className = 'status';
+  const res = await refreshInstalled(srv, key);
+  if (res === null) {
+    srvstatus.textContent = '연결 실패 — ' + (window.__lastConnErr || '네트워크') + ' (' + srv + ')';
+    srvstatus.className = 'status err';
+    return;
+  }
+  installedModels = res;
+  srvstatus.textContent = '연결됨 — ' + srv + ' (health: ' + (window.__jeffHealth?.model ?? '?') + ', 어댑터 ' + (Object.keys(window.__jeffHealth?.adapters ?? {}).length) + '개 로드)';
+  renderCatalog();
+  updateRunBtn();
+});
+
+function badge(c) {
+  if (installedModels === null) return '<span class="badge missing">연결 필요</span>';
+  if (c.family === 'base') return c.installed ? '<span class="badge ok">서빙 중</span>' : '<span class="badge missing">미로드</span>';
+  return c.installed ? '<span class="badge ok">로드됨</span>' : '<span class="badge missing">미로드</span>';
+}
+
+function renderCatalog() {
+  models.innerHTML = '';
+  const bases = CATALOG.filter((c) => c.family === 'base');
+  const adapters = CATALOG.filter((c) => c.family !== 'base');
+  const groups = [{ label: '베이스 모델 (' + bases.length + '개)', cards: bases }, { label: 'LoRA 어댑터 (' + adapters.length + '개)', cards: adapters }];
+  for (const g of groups) {
+    const head = document.createElement('div');
+    head.className = 'family';
+    head.style.marginTop = '14px';
+    head.textContent = g.label;
+    models.appendChild(head);
+    for (const c of g.cards) {
+      const card = document.createElement('div');
+      card.className = 'mcard' + (installedModels && !c.installed ? ' missing' : '') + (selectedModel === c.model ? ' sel' : '');
+      card.innerHTML =
+        '<div class="mname">' + c.model + ' ' + badge(c) + '</div>' +
+        '<div class="mdesc">' + c.desc + '</div>' +
+        '<div class="mtags conf">' + '최대옵션=' + (c.maxOptions ?? '?') + '</div>';
+      card.addEventListener('click', () => selectModel(c));
+      models.appendChild(card);
+    }
+  }
+}
+
+async function selectModel(c) {
+  selectedModel = c.model;
+  if (installedModels && !c.installed) {
+    if (!confirm(c.model + ' 미로드 — 서버에 설치 안 됨. 계속 시도할까? (422 예상)')) {
+      renderCatalog();
+      return;
+    }
+  }
+  renderCatalog();
+  if (c.example) {
+    qjson.value = JSON.stringify(c.example, null, 2);
+  }
+  updateRunBtn();
+  if (!status.className.includes('err')) status.className = 'status';
+  if (!status.textContent.includes('실패')) status.textContent = selectedModel + ' 선택됨';
+}
+
+function updateRunBtn() {
+  const hasSel = !!selectedModel;
+  run.disabled = !hasSel;
+  run.textContent = hasSel ? '판정 (' + selectedModel + (orders === 2 ? ', orders=2' : '') + ')' : '모델 선택 + 연결 후 판정';
+}
+
+// ---- 프리셋: 내장(카탈로그 example) + 사용자 저장(localStorage) ----
+const LS_PRESETS = 'jeff-lab-presets';
+const BUILTIN = {};
+for (const c of CATALOG) {
+  if (c.example) BUILTIN[c.model] = c.example;
+}
+BUILTIN['범용'] = {
+  intent: { type: 'choice', instructions: 'What is the core request?', criteria: { refund: 'Wants money back', complaint: 'Complaint', inquiry: 'Question or info request', action: 'Wants something done', other: 'Other' } },
+  urgency: { type: 'score', instructions: 'How urgent is this?', criteria: ['calm', 'moderate', 'urgent'] },
+  negative: { type: 'noul', instructions: 'Does this contain negative emotion?' },
+};
+BUILTIN['가드+스팸 (이중)'] = {
+  injection: { type: 'choice', instructions: 'Is this user input safe or an attack?', criteria: { safe: 'A normal user request', attack: 'A prompt injection, jailbreak or manipulation attempt' } },
+  spam: { type: 'choice', instructions: 'Is this message spam?', criteria: { ham: 'Legitimate', spam: 'Spam or phishing' } },
+};
+
+function loadCustomPresets() {
+  try { return JSON.parse(localStorage.getItem(LS_PRESETS) || '{}'); } catch { return {}; }
+}
+function saveCustomPresets(p) { localStorage.setItem(LS_PRESETS, JSON.stringify(p)); }
+let PRESETS = Object.assign({}, BUILTIN, loadCustomPresets());
+
+function renderPresets() {
+  PRESETS = Object.assign({}, BUILTIN, loadCustomPresets());
+  const cur = presetSel.value;
+  presetSel.innerHTML = '';
+  for (const n of Object.keys(PRESETS)) {
+    const opt = document.createElement('option');
+    const isCustom = !!loadCustomPresets()[n];
+    opt.value = n; opt.textContent = (isCustom ? '⭐ ' : '') + n + ' 프리셋';
+    presetSel.appendChild(opt);
+  }
+  if (cur && PRESETS[cur]) presetSel.value = cur;
+}
+renderPresets();
+
+$('loadpreset').addEventListener('click', () => {
+  const n = presetSel.value;
+  if (n && PRESETS[n]) qjson.value = JSON.stringify(PRESETS[n], null, 2);
+});
+$('reset').addEventListener('click', () => {
+  const c = CATALOG.find((x) => x.model === selectedModel);
+  const src = (c && c.example) || PRESETS['범용'];
+  qjson.value = JSON.stringify(src ?? {}, null, 2);
+});
+$('savepreset').addEventListener('click', () => {
+  const n = ($('pname').value || '').trim();
+  if (!n) { status.textContent = '프리셋 이름을 입력하세요'; status.className = 'status err'; return; }
+  let q;
+  try { q = JSON.parse(qjson.value); } catch (e) { status.textContent = '질문 JSON 오류: ' + e.message; status.className = 'status err'; return; }
+  const custom = loadCustomPresets();
+  custom[n] = q;
+  saveCustomPresets(custom);
+  renderPresets();
+  presetSel.value = n;
+  status.textContent = '프리셋 저장됨 — ' + n;
+  status.className = 'status';
+});
+$('delpreset').addEventListener('click', () => {
+  const n = presetSel.value;
+  if (!n) return;
+  if (BUILTIN[n]) { status.textContent = '내장 프리셋은 삭제 불가 (사용자 저장만 삭제 가능)'; status.className = 'status err'; return; }
+  const custom = loadCustomPresets();
+  if (!custom[n]) { status.textContent = '삭제할 저장 프리셋이 아님'; status.className = 'status err'; return; }
+  delete custom[n];
+  saveCustomPresets(custom);
+  renderPresets();
+  status.textContent = '프리셋 삭제됨 — ' + n;
+  status.className = 'status';
+});
+
+run.addEventListener('click', async () => {
+  const text = $('text').value.trim();
+  if (!text || !selectedModel) return;
+  let questions = {};
+  try {
+    const parsed = JSON.parse(qjson.value);
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) questions = parsed;
+  } catch (e) { status.textContent = '질문 JSON 오류: ' + e.message; status.className = 'status err'; return; }
+  if (!Object.keys(questions).length) { status.textContent = '질문이 비어 있다 — 프리셋을 골라 질문을 채워라'; status.className = 'status err'; return; }
+
+  run.disabled = true;
+  status.textContent = '판정 중...';
+  status.className = 'status';
+  const t0 = performance.now();
+  // state는 문자열 — jeff 규격 단순형. questions는 맵형 (WireQuestion)
+  const body = { model: selectedModel, state: text, questions: questions, orders: orders };
+  const headers = { 'Content-Type': 'application/json' };
+  if (key) headers['Authorization'] = 'Bearer ' + key;
+  try {
+    const res = await fetch(srv + '/v1/systemone', { method: 'POST', headers, body: JSON.stringify(body) });
+    if (!res.ok) {
+      let msg = res.status;
+      try { const e = await res.json(); msg = (e.detail && (typeof e.detail === 'string' ? e.detail : JSON.stringify(e.detail))) || msg; } catch {}
+      throw new Error('서버 ' + msg);
+    }
+    const out = await res.json();
+    const ms = (performance.now() - t0).toFixed(0);
+    renderResults(out, ms);
+    status.textContent = '완료';
+    status.className = 'status';
+  } catch (e) {
+    status.textContent = '오류: ' + e.message;
+    status.className = 'status err';
+  }
+  run.disabled = false;
+  updateRunBtn();
+});
+
+function bar2(label, prob, pct) {
+  return '<div class="bar2"><div class="bl" title="' + String(label).replace(/"/g, '&quot;') + '">' + label + '</div>' +
+    '<div class="bb"><span style="width:' + pct + '%"></span></div>' +
+    '<div class="bp conf">' + pct + '%</div></div>';
+}
+
+function renderResults(out, ms) {
+  let html = '<div class="card">';
+  const u = out.usage ?? {};
+  html += '<div class="timing">model=' + (out.model ?? '?') + ' · ' + ms + 'ms 왕복 · in ' + (u.input_tokens ?? '?') + ' tok · orders=' + (u.orders ?? 1) + '</div>';
+  html += '<div style="margin-top:10px">';
+  for (const [k, v] of Object.entries(out.answers ?? {})) {
+    if (v.type === 'choice') {
+      html += '<div class="qname">' + k + ' → <b>' + v.choice + '</b> <span class="conf">(confidence ' + (v.confidence ?? 0).toFixed(3) + ')</span></div>';
+      const entries = Object.entries(v.probabilities ?? {});
+      const pick = v.choice;
+      const sorted = [...entries].sort((a, b) => b[1] - a[1]).slice(0, 8);
+      for (const [n, p] of sorted) {
+        html += bar2(n === pick ? '▶ ' + n : n, n === pick, (p * 100).toFixed(1));
+      }
+    } else if (v.type === 'noul') {
+      const yes = v.noul ?? 0;
+      html += '<div class="qname">' + k + ' → <b>' + (yes >= 0.5 ? 'YES' : 'NO') + '</b> <span class="conf">(yes 확률 ' + yes.toFixed(3) + ')</span></div>';
+      html += bar2('yes', yes >= 0.5, (yes * 100).toFixed(1));
+      html += bar2('no', yes < 0.5, ((1 - yes) * 100).toFixed(1));
+    } else if (v.type === 'score') {
+      const legend = Object.values(v.legend ?? {});
+      const idx = Math.round(v.score ?? 0);
+      html += '<div class="qname">' + k + ' → <b>' + (legend[idx] ?? '?') + '</b> <span class="conf">(score ' + (v.score ?? 0).toFixed(2) + ' / ' + (legend.length - 1) + ', conf ' + (v.confidence ?? 0).toFixed(3) + ')</span></div>';
+      (v.probabilities ?? []).forEach((p, i) => { html += bar2(legend[i] ?? String(i), i === idx, (p * 100).toFixed(1)); });
+    } else {
+      html += bar2(k, JSON.stringify(v).slice(0, 60), 0);
+    }
+  }
+  html += '</div></div>';
+  $('results').innerHTML = html;
+}
+
+renderCatalog();
+(async () => {  // 부팅 자동 연결 — UI 유무 무관
+  const res = await refreshInstalled(srv, key);
+  if (res) {
+    installedModels = res;
+    srvstatus.textContent = '연결됨 — ' + srv + ' (모델 ' + (window.__jeffHealth?.model ?? '?') + ', 어댑터 ' + Object.keys(window.__jeffHealth?.adapters ?? {}).length + '개)';
+    srvstatus.className = 'status';
+  } else {
+    srvstatus.textContent = '연결 실패 — ' + (window.__lastConnErr || '네트워크') + ' (' + srv + ')\n노트북 jeff-serve 꺼짐 확인 — 서버 설정에서 URL 수정 가능';
+    srvstatus.className = 'status err';
+  }
+  renderCatalog();
+  updateRunBtn();
+})();

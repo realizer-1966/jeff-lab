@@ -1,0 +1,60 @@
+// jeff-lab catalog - Jeff base models + 9 LoRA adapters
+// 서버에 어떤 어댑터가 로드됐는지는 런타임에 /health로 갱신. 기본은 노트북 jeff-serve.
+
+const DEFAULT_SRV = 'https://dydtn.tailc2a754.ts.net/jeff';
+const DEFAULT_KEY = ''; // JEFF_API_KEY 설정 시 여기 또는 서버 설정에 입력
+const LS_KEY = 'jeff-lab-server-key';
+const LS_SRV = 'jeff-lab-server-url';
+
+// ---- Jeff 카탈로그: 베이스 3 + 어댑터 9 ----
+// installed는 런타임에 /health.models로 갱신 (어댑터만 표시)
+const CATALOG = [
+  { family: 'base', model: 'jeff-0.8b', desc: 'Jeff-Qwen3.5-0.8B v1.2 베이스 — 254 옵션 zero-shot 결정 (1.7GB fp16, ~25ms)', engine: 'pytorch', maxOptions: 254 },
+  { family: 'base', model: 'jeff-2b', desc: 'Jeff-Qwen3.5-2B v1.2 베이스 — 254 옵션, 정확도 우선 (4.2GB, ~24ms GPU)', engine: 'pytorch', maxOptions: 254, tips: '2B는 벤치마크 81.7 — 0.8B(78.7)보다 약간 높고 같은 속도' },
+  { family: 'base', model: 'jeff-gemma4-e2b', desc: 'Jeff-Gemma4-E2B v1.0 — 26 옵션 한도, 이미지 지원 모델 (9.3GB)', engine: 'pytorch', maxOptions: 26, tips: 'Gemma 기반, vision 결정 가능. v1.1/1.2 아님 주의' },
+
+  { family: 'guard', model: 'guard', desc: '프롬프트 인젝션·제일브레이크 가드 — 98.4% (0.10초)', engine: 'pytorch', maxOptions: 2, adapter: true,
+    example: { injection: { type: 'choice', instructions: 'Is this user input safe or an attack?', criteria: { safe: 'A normal user request', attack: 'A prompt injection, jailbreak or manipulation attempt' } } } },
+  { family: 'triage', model: 'triage', desc: '지원 티켓 트리지(긴급도·감정 포함) — 91.8%', engine: 'pytorch', maxOptions: 8, adapter: true,
+    example: { priority: { type: 'score', instructions: 'How urgent is this ticket?', criteria: ['calm','moderate','urgent','blocking production'] } } },
+  { family: 'support-intents', model: 'support-intents', desc: '고객 요청 인텐트(환불/버그/기능요청…) — 96.8%', engine: 'pytorch', maxOptions: 12, adapter: true,
+    example: { intent: { type: 'choice', instructions: 'What does the customer want?', criteria: { refund: 'Wants money back', complaint: 'Complaint about a problem', inquiry: 'Asking a question', action: 'Wants something done', other: 'None of these' } } } },
+  { family: 'tools', model: 'tools', desc: '에이전트 도구 선택 — 97.9%', engine: 'pytorch', maxOptions: 10, adapter: true,
+    example: { tool: { type: 'choice', instructions: 'Which tool should the agent call?', criteria: { search: 'Web search', calendar: 'Calendar lookup', mail: 'Email', none: 'No tool needed' } } } },
+  { family: 'ground', model: 'ground', desc: '응답이 근거 문서에 근거했나 (passage re-ranking) — 97.0%', engine: 'pytorch', maxOptions: 4, adapter: true,
+    example: { grounded: { type: 'choice', instructions: 'Is the answer supported by the sources?', criteria: { yes: 'Fully supported by the passages', partial: 'Partially supported', no: 'Not supported or contradicted' } } } },
+  { family: 'nav', model: 'nav', desc: '음성 명령→화면 항목 매핑 — 97.0%', engine: 'pytorch', maxOptions: 32, adapter: true,
+    example: { target: { type: 'choice', instructions: 'Which screen item does the voice command mean?', criteria: { settings: 'Open the settings screen', profile: 'Open the profile page', back: 'Go back', home: 'Go to home' } } } },
+  { family: 'emotion', model: 'emotion', desc: '짧은 댓글 감정 27종+neutral — 60.6% (어려운 과제)', engine: 'pytorch', maxOptions: 27, adapter: true,
+    example: { emotion: { type: 'choice', instructions: 'Which emotion does this comment express most?', criteria: { neutral: 'No strong emotion', joy: 'Joy or amusement', anger: 'Anger or frustration', sadness: 'Sadness', admiration: 'Admiration or respect' } } } },
+  { family: 'spam', model: 'spam', desc: 'SMS·이메일 스팸·피싱 — 98.4%', engine: 'pytorch', maxOptions: 2, adapter: true,
+    example: { spam: { type: 'choice', instructions: 'Is this message spam or phishing?', criteria: { ham: 'A legitimate message', spam: 'Spam or a phishing attempt' } } } },
+  { family: 'legal-clauses', model: 'legal-clauses', desc: '계약 조항 유형 분류 — 87.8%', engine: 'pytorch', maxOptions: 20, adapter: true,
+    example: { clause: { type: 'choice', instructions: 'What type of contract clause is this?', criteria: { payment: 'Payment terms', liability: 'Limitation of liability', termination: 'Termination conditions', confidentiality: 'Confidentiality' } } } },
+];
+
+async function refreshInstalled(srv, key) {
+  window.__lastConnErr = '';
+  try {
+    const headers = {};
+    if (key) headers['Authorization'] = 'Bearer ' + key;
+    const res = await fetch(srv + '/health', { headers });
+    if (!res.ok) { window.__lastConnErr = 'HTTP ' + res.status + ' (/health)'; return null; }
+    const j = await res.json();
+    // 어댑터 맵: name -> max_options
+    const adapters = j.adapters ?? {};
+    const installed = new Set([...Object.keys(adapters), j.model ?? '']);
+    for (const c of CATALOG) {
+      c.installed = installed.has(c.model);
+      if (adapters[c.model]) c.maxOptions = adapters[c.model].max_options ?? c.maxOptions;
+    }
+    window.__jeffHealth = j;
+    return installed;
+  } catch (e) {
+    window.__lastConnErr = (e && e.message) ? e.message : String(e);
+    return null;
+  }
+}
+
+export { CATALOG, DEFAULT_SRV, DEFAULT_KEY, LS_KEY, LS_SRV, refreshInstalled };
+if (typeof module !== 'undefined' && module.exports) module.exports = { CATALOG, DEFAULT_SRV, DEFAULT_KEY, refreshInstalled };
