@@ -41,12 +41,19 @@ async function refreshInstalled(srv, key) {
     const res = await fetch(srv + '/health', { headers });
     if (!res.ok) { window.__lastConnErr = 'HTTP ' + res.status + ' (/health)'; return null; }
     const j = await res.json();
-    // 어댑터 맵: name -> max_options
     const adapters = j.adapters ?? {};
-    const installed = new Set([...Object.keys(adapters), j.model ?? '']);
+    // health.model=정식 이름(jeff-qwen3.5-2b). 카탈로그 별명(jeff-2b·jeff-0.8b·jeff-gemma4-e2b)과의
+    // 서브스트링 매핑 — checkpoint 서버(available형)와 release 서버(모델 이름형) 양쪽 통과.
+    const installed = new Set([...Object.keys(adapters)]);
+    const servingName = (j.model ?? '').toLowerCase();
     for (const c of CATALOG) {
-      c.installed = installed.has(c.model);
-      if (adapters[c.model]) c.maxOptions = adapters[c.model].max_options ?? c.maxOptions;
+      if (c.family === 'base') {
+        const alias = c.model.replace('jeff-', '');           // 0.8b / 2b / gemma4-e2b
+        const alias2 = alias.replace('-e2b', '');              // gemma4
+        c.installed = servingName.includes(alias) || servingName.includes(alias2);
+      } else {
+        c.installed = installed.has(c.model);
+      }
     }
     window.__jeffHealth = j;
     return installed;

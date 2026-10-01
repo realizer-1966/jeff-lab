@@ -1,5 +1,5 @@
 // jeff-lab - server connect + adapter catalog + question editor + decide
-import { CATALOG, DEFAULT_SRV, DEFAULT_KEY, LS_KEY, LS_SRV, refreshInstalled } from './catalog.js?v=1';
+import { CATALOG, DEFAULT_SRV, DEFAULT_KEY, LS_KEY, LS_SRV, refreshInstalled } from './catalog.js?v=2';
 
 const $ = (id) => document.getElementById(id);
 const srvurl = $('srvurl'), srvkey = $('srvkey'), connect = $('connect');
