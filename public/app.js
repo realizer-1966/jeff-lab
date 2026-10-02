@@ -1,5 +1,5 @@
 // jeff-lab - server connect + adapter catalog + question editor + decide
-import { CATALOG, DEFAULT_SRV, DEFAULT_KEY, LS_KEY, LS_SRV, refreshInstalled } from './catalog.js?v=3';
+import { CATALOG, DEFAULT_SRV, DEFAULT_KEY, LS_KEY, LS_SRV, refreshInstalled } from './catalog.js?v=4';
 
 const $ = (id) => document.getElementById(id);
 const srvurl = $('srvurl'), srvkey = $('srvkey'), connect = $('connect');
@@ -185,21 +185,36 @@ run.addEventListener('click', async () => {
   status.textContent = '판정 중...';
   status.className = 'status';
   const t0 = performance.now();
-  // state는 문자열 — jeff 규격 단순형. questions는 맵형 (WireQuestion)
-  const body = { model: selectedModel, state: text, questions: questions, orders: orders };
   const headers = { 'Content-Type': 'application/json' };
   if (key) headers['Authorization'] = 'Bearer ' + key;
+  let usedOrders = orders;
+  let out = null;
   try {
-    const res = await fetch(srv + '/v1/systemone', { method: 'POST', headers, body: JSON.stringify(body) });
+    const send = (withOrders) => {
+      const body = { model: selectedModel, state: text, questions: questions };
+      if (withOrders) body.orders = orders;
+      return fetch(srv + '/v1/systemone', { method: 'POST', headers, body: JSON.stringify(body) });
+    };
+    let res = await send(orders !== undefined && orders !== 1);
+    if (res.status === 422) {
+      // 구형 서버(v1.1: 어댑터·orders 없음) — orders 필드가 서버에 없으면 extra_forbidden 422가 온다.
+      // orders 없이 재시도 (사용자에게 정밀판정이 불가한 서버임을 상태줄로 알린다).
+      const errText = await res.clone().text();
+      let isOrdersErr = false;
+      try { isOrdersErr = (errText || '').includes('orders'); } catch { }
+      res = await send(false);
+      if (res.ok) usedOrders = 1;
+      window.__lastOrdersFallback = isOrdersErr;
+    }
     if (!res.ok) {
       let msg = res.status;
       try { const e = await res.json(); msg = (e.detail && (typeof e.detail === 'string' ? e.detail : JSON.stringify(e.detail))) || msg; } catch {}
       throw new Error('서버 ' + msg);
     }
-    const out = await res.json();
+    out = await res.json();
     const ms = (performance.now() - t0).toFixed(0);
     renderResults(out, ms);
-    status.textContent = '완료';
+    status.textContent = '완료' + (usedOrders !== orders ? ' (서버가 orders 미지원 — 1회 판정으로 폴백)' : '');
     status.className = 'status';
   } catch (e) {
     status.textContent = '오류: ' + e.message;
