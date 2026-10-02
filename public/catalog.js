@@ -38,9 +38,14 @@ async function refreshInstalled(srv, key) {
   try {
     const headers = {};
     if (key) headers['Authorization'] = 'Bearer ' + key;
-    const res = await fetch(srv + '/health', { headers });
-    if (!res.ok) { window.__lastConnErr = 'HTTP ' + res.status + ' (/health)'; return null; }
-    const j = await res.json();
+    const [hres, mres] = await Promise.all([
+      fetch(srv + '/health', { headers }),
+      fetch(srv + '/v1/models', { headers }),
+    ]);
+    const res = hres;
+    if (!hres.ok) { window.__lastConnErr = 'HTTP ' + hres.status + ' (/health)'; return null; }
+    const j = await hres.json();
+    window.__jeffModels = mres.ok ? (await mres.json()) : null;
     const adapters = j.adapters ?? {};
     // health.model=정식 이름(jeff-qwen3.5-2b). 카탈로그 별명(jeff-2b·jeff-0.8b·jeff-gemma4-e2b)과의
     // 서브스트링 매핑 — checkpoint 서버(available형)와 release 서버(모델 이름형) 양쪽 통과.

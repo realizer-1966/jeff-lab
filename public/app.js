@@ -1,5 +1,5 @@
 // jeff-lab - server connect + adapter catalog + question editor + decide
-import { CATALOG, DEFAULT_SRV, DEFAULT_KEY, LS_KEY, LS_SRV, refreshInstalled } from './catalog.js?v=4';
+import { CATALOG, DEFAULT_SRV, DEFAULT_KEY, LS_KEY, LS_SRV, refreshInstalled } from './catalog.js?v=5';
 
 const $ = (id) => document.getElementById(id);
 const srvurl = $('srvurl'), srvkey = $('srvkey'), connect = $('connect');
@@ -187,6 +187,38 @@ run.addEventListener('click', async () => {
   const t0 = performance.now();
   const headers = { 'Content-Type': 'application/json' };
   if (key) headers['Authorization'] = 'Bearer ' + key;
+  // 베이스 모델 전환 — 이 서버(v1.1 형)는 /v1/switch로만 checkpoint를 바꾼다.
+  // selectedModel이 base(jeff-0.8b/2b/gemma4-e2b)이고 health.model이 다른 모델 serving 중이면 먼저 switch.
+  const jeffHealth = window.__jeffHealth || {};
+  const servingNow = (jeffHealth.model || '').toLowerCase();
+  const wants = selectedModel.replace('jeff-', '').toLowerCase();     // 0.8b / 2b / gemma4-e2b
+  const modelSelected = CATALOG.find((c) => c.model === selectedModel);
+  const isBase = modelSelected && modelSelected.family === 'base';
+  if (isBase && srv && (window.__jeffModels || {}).available) {
+    const avail = window.__jeffModels.available.find((a) => {
+      const n = (a.name || a.model || '').toLowerCase();
+      return n === 'jeff-' + wants || n.includes(wants.replace('-e2b', ''));
+    });
+    if (avail && !servingNow.includes(wants.replace('-e2b', ''))) {
+      status.textContent = '모델 전환 중... ' + (avail.name || avail.checkpoint);
+      try {
+        const sres = await fetch(srv + '/v1/switch', { method: 'POST', headers,
+          body: JSON.stringify({ checkpoint: avail.checkpoint || ('checkpoints/jeff-' + wants) }) });
+        if (!sres.ok) {
+          const et = await sres.text();
+          throw new Error('switch 실패 ' + sres.status + ' — ' + et.slice(0, 120));
+        }
+        const sj = await sres.json();
+        window.__jeffHealth.model = sj.model || window.__jeffHealth.model;
+      } catch (e) {
+        status.textContent = '모델 전환 오류: ' + e.message;
+        status.className = 'status err';
+        run.disabled = false;
+        updateRunBtn();
+        return;
+      }
+    }
+  }
   let usedOrders = orders;
   let out = null;
   try {
