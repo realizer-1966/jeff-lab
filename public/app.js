@@ -1,5 +1,5 @@
 // jeff-lab - server connect + adapter catalog + question editor + decide
-import { CATALOG, DEFAULT_SRV, DEFAULT_SRV2, DEFAULT_KEY, LS_KEY, LS_KEY2, LS_SRV, LS_SRV2, refreshInstalled } from './catalog.js?v=11';
+import { CATALOG, DEFAULT_SRV, DEFAULT_SRV2, DEFAULT_KEY, LS_KEY, LS_KEY2, LS_SRV, LS_SRV2, refreshInstalled } from './catalog.js?v=12';
 
 const $ = (id) => document.getElementById(id);
 const srvurl = $('srvurl'), srvkey = $('srvkey'), connect = $('connect'),
@@ -348,7 +348,12 @@ function renderResults(out, ms) {
       const legend = Object.values(v.legend ?? {});
       const idx = Math.round(v.score ?? 0);
       html += '<div class="qname">' + k + ' → <b>' + (legend[idx] ?? '?') + '</b> <span class="conf">(score ' + (v.score ?? 0).toFixed(2) + ' / ' + (legend.length - 1) + ', conf ' + (v.confidence ?? 0).toFixed(3) + ')</span></div>';
-      (v.probabilities ?? []).forEach((p, i) => { html += bar2(legend[i] ?? String(i), i === idx, (p * 100).toFixed(1)); });
+      // probabilities는 서버별로 dict({"0":…}) 또는 배열 — 둘 다 지원
+      const probs = Array.isArray(v.probabilities) ? v.probabilities.map((p, i) => [String(i), p]) : Object.entries(v.probabilities ?? {});
+      for (const [n, p] of probs) {
+        const i = parseInt(n, 10);
+        html += bar2(legend[isNaN(i) ? undefined : i] ?? legend[n] ?? n, i === idx, (p * 100).toFixed(1));
+      }
     } else {
       html += bar2(k, JSON.stringify(v).slice(0, 60), 0);
     }
