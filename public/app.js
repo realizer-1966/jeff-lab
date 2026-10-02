@@ -1,23 +1,28 @@
 // jeff-lab - server connect + adapter catalog + question editor + decide
-import { CATALOG, DEFAULT_SRV, DEFAULT_KEY, LS_KEY, LS_SRV, refreshInstalled } from './catalog.js?v=6';
+import { CATALOG, DEFAULT_SRV, DEFAULT_SRV2, DEFAULT_KEY, LS_KEY, LS_SRV, refreshInstalled } from './catalog.js?v=8';
 
 const $ = (id) => document.getElementById(id);
-const srvurl = $('srvurl'), srvkey = $('srvkey'), connect = $('connect');
+const srvurl = $('srvurl'), srvkey = $('srvkey'), connect = $('connect'),
+      srvurl2 = $('srvurl2'), srvkey2 = $('srvkey2');
 const hasSrvUI = !!connect;
 const srvstatus = $('srvstatus'), status = $('status');
 const run = $('run'), models = $('models');
 const qjson = $('qjson'), presetSel = $('preset');
 
 let srv = localStorage.getItem(LS_SRV) || DEFAULT_SRV;
+let srv2 = localStorage.getItem(LS_SRV2) || DEFAULT_SRV2;   // 대형 베이스 서버(2B·gemma4)
 // 구버전 http 저장값 마이그레이션 - mixed content로 브라우저 fetch 불가
 if (srv.startsWith('http://')) srv = DEFAULT_SRV;
 let key = localStorage.getItem(LS_KEY) || DEFAULT_KEY;
+let key2 = localStorage.getItem(LS_KEY2) || key;
 let installedModels = null;
 let selectedModel = null;
 let orders = 1;
 
 if (srvurl) srvurl.value = srv;
 if (srvkey) srvkey.value = key;
+  if (srvurl2) srvurl2.value = srv2;
+  if (srvkey2) srvkey2.value = key2 || '';
 
 // orders 토글
 function setOrders(n) {
@@ -33,24 +38,28 @@ hasSrvUI && connect.addEventListener('click', async () => {
   key = srvkey.value || '';
   localStorage.setItem(LS_SRV, srv);
   if (key) localStorage.setItem(LS_KEY, key); else localStorage.removeItem(LS_KEY);
+  srv2 = (srvurl2 && srvurl2.value.trim().replace(/\/$/, '')) || DEFAULT_SRV2;
+  key2 = (srvkey2 && srvkey2.value) || key2 || key;
+  localStorage.setItem(LS_SRV2, srv2);
+  if (key2) localStorage.setItem(LS_KEY2, key2);
   srvstatus.textContent = '연결 시도 중...';
   srvstatus.className = 'status';
-  const res = await refreshInstalled(srv, key);
+  const res = await refreshInstalled(srv, key, srv2, key2);
   if (res === null) {
     srvstatus.textContent = '연결 실패 — ' + (window.__lastConnErr || '네트워크') + ' (' + srv + ')';
     srvstatus.className = 'status err';
     return;
   }
   installedModels = res;
-  srvstatus.textContent = '연결됨 — ' + srv + ' (health: ' + (window.__jeffHealth?.model ?? '?') + ', 어댑터 ' + (Object.keys(window.__jeffHealth?.adapters ?? {}).length) + '개 로드)';
+  srvstatus.textContent = '연결됨 — ' + srv + ' (포트1: ' + (window.__jeffHealth?.model ?? '?') + '·어댑터 ' + (Object.keys(window.__jeffHealth?.adapters ?? {}).length) + '개' + ' | 포트2: ' + (window.__jeffHealth2?.model ?? '미연결') + ')';
   renderCatalog();
   updateRunBtn();
 });
 
 function badge(c) {
   if (installedModels === null) return '<span class="badge missing">연결 필요</span>';
-  if (c.family === 'base') return c.installed ? '<span class="badge ok">서빙 중</span>' : '<span class="badge missing">미로드</span>';
-  return c.installed ? '<span class="badge ok">로드됨</span>' : '<span class="badge missing">미로드</span>';
+  if (c.family === 'base') return c.installed ? '<span class="badge ok">서빙 중</span>' : '<span class="badge missing">재기동 필요</span>';
+  return c.installed ? '<span class="badge ok">로드됨</span>' : '<span class="badge missing">재기동 필요</span>';
 }
 
 function renderCatalog() {
@@ -80,7 +89,14 @@ function renderCatalog() {
 async function selectModel(c) {
   selectedModel = c.model;
   if (installedModels && !c.installed) {
-    if (!confirm(c.model + ' 미로드 — 서버에 설치 안 됨. 계속 시도할까? (422 예상)')) {
+    if (c.family === 'base' && c.srv2) {
+      const hint = '이 카드는 대형 베이스 전용 서버(포트2, /jeff2)에서 서빙 중이 아니다.\n\n' +
+        '노트북에서 포트2 서버 기동하면 자동 활성. 지금 포트1 베이스로 폴백 판정할까?';
+      if (!confirm(hint)) {
+        renderCatalog();
+        return;
+      }
+    } else if (!confirm(c.model + ' 미로드 — 서버에 설치 안 됨. 계속 시도할까? (422 예상)')) {
       renderCatalog();
       return;
     }
@@ -225,8 +241,20 @@ run.addEventListener('click', async () => {
     const send = (withOrders) => {
       const body = { model: selectedModel, state: text, questions: questions };
       if (withOrders) body.orders = orders;
-      return fetch(srv + '/v1/systemone', { method: 'POST', headers, body: JSON.stringify(body) });
+      const url = targetSrv() + '/v1/systemone';
+      return fetch(url, { method: 'POST', headers: targetHeaders(), body: JSON.stringify(body) });
     };
+    // 두 포트 병행: 카드가 srv2 대상이면 대형 베이스 서버(포트2)로 fetch — 어댑터/베이스 선택이 자동 enable/disable된다
+    function targetSrv() {
+      const c = CATALOG.find((x) => x.model === selectedModel);
+      return (c && c.srv2 && srv2) ? srv2 : srv;
+    }
+    function targetHeaders() {
+      const c = CATALOG.find((x) => x.model === selectedModel);
+      const h = Object.assign({}, headers);
+      if (c && c.srv2 && srv2 && key2) { h['Authorization'] = 'Bearer ' + key2; }
+      return h;
+    }
     let res = await send(orders !== undefined && orders !== 1);
     if (res.status === 422) {
       // 구형 서버(v1.1: 어댑터·orders 없음) — extra_forbidden 422 → orders 없이 재시도.
@@ -244,7 +272,7 @@ run.addEventListener('click', async () => {
         const sendB = (withOrders) => {
           const body = { model: 'jeff-latest', state: text, questions: questions };
           if (withOrders) body.orders = orders;
-          return fetch(srv + '/v1/systemone', { method: 'POST', headers, body: JSON.stringify(body) });
+          return fetch(targetSrv() + '/v1/systemone', { method: 'POST', headers: targetHeaders(), body: JSON.stringify(body) });
         };
         res = await sendB(orders !== undefined && orders !== 1);
         if (res.status === 422) res = await sendB(false);
@@ -309,7 +337,7 @@ function renderResults(out, ms) {
 
 renderCatalog();
 (async () => {  // 부팅 자동 연결 — UI 유무 무관
-  const res = await refreshInstalled(srv, key);
+  const res = await refreshInstalled(srv, key, srv2, key2);
   if (res) {
     installedModels = res;
     srvstatus.textContent = '연결됨 — ' + srv + ' (모델 ' + (window.__jeffHealth?.model ?? '?') + ', 어댑터 ' + Object.keys(window.__jeffHealth?.adapters ?? {}).length + '개)';
