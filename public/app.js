@@ -1,9 +1,10 @@
 // jeff-lab - server connect + adapter catalog + question editor + decide
-import { CATALOG, DEFAULT_SRV, DEFAULT_SRV2, DEFAULT_KEY, LS_KEY, LS_KEY2, LS_SRV, LS_SRV2, refreshInstalled } from './catalog.js?v=12';
+import { CATALOG, DEFAULT_SRV, DEFAULT_SRV2, DEFAULT_SRV3, DEFAULT_KEY, LS_KEY, LS_KEY2, LS_KEY3, LS_SRV, LS_SRV2, LS_SRV3, refreshInstalled } from './catalog.js?v=13';
 
 const $ = (id) => document.getElementById(id);
 const srvurl = $('srvurl'), srvkey = $('srvkey'), connect = $('connect'),
-      srvurl2 = $('srvurl2'), srvkey2 = $('srvkey2');
+      srvurl2 = $('srvurl2'), srvkey2 = $('srvkey2'),
+      srvurl3 = $('srvurl3'), srvkey3 = $('srvkey3');
 const hasSrvUI = !!connect;
 const srvstatus = $('srvstatus'), status = $('status');
 const run = $('run'), models = $('models');
@@ -17,6 +18,8 @@ let srv2 = localStorage.getItem(LS_SRV2) || DEFAULT_SRV2;   // 대형 베이스 
 if (srv.startsWith('http://')) srv = DEFAULT_SRV;
 let key = localStorage.getItem(LS_KEY) || DEFAULT_KEY;
 let key2 = localStorage.getItem(LS_KEY2) || key;
+let srv3 = localStorage.getItem(LS_SRV3) || DEFAULT_SRV3;   // 포트3 — gemma4(vision) 단독
+let key3 = localStorage.getItem(LS_KEY3) || key;
 let installedModels = null;
 let selectedModel = null;
 let orders = 1;
@@ -25,6 +28,8 @@ if (srvurl) srvurl.value = srv;
 if (srvkey) srvkey.value = key;
   if (srvurl2) srvurl2.value = srv2;
   if (srvkey2) srvkey2.value = key2 || '';
+  if (srvurl3) srvurl3.value = srv3;
+  if (srvkey3) srvkey3.value = key3 || '';
 
 // orders 토글
 function setOrders(n) {
@@ -44,16 +49,20 @@ hasSrvUI && connect.addEventListener('click', async () => {
   key2 = (srvkey2 && srvkey2.value) || key2 || key;
   localStorage.setItem(LS_SRV2, srv2);
   if (key2) localStorage.setItem(LS_KEY2, key2);
+  srv3 = (srvurl3 && srvurl3.value.trim().replace(/\/$/, '')) || DEFAULT_SRV3;
+  key3 = (srvkey3 && srvkey3.value) || key3 || key;
+  localStorage.setItem(LS_SRV3, srv3);
+  if (key3) localStorage.setItem(LS_KEY3, key3);
   srvstatus.textContent = '연결 시도 중...';
   srvstatus.className = 'status';
-  const res = await refreshInstalled(srv, key, srv2, key2);
+  const res = await refreshInstalled(srv, key, srv2, key2, srv3, key3);
   if (res === null) {
     srvstatus.textContent = '연결 실패 — ' + (window.__lastConnErr || '네트워크') + ' (' + srv + ')';
     srvstatus.className = 'status err';
     return;
   }
   installedModels = res;
-  srvstatus.textContent = '연결됨 — ' + srv + ' (포트1: ' + (window.__jeffHealth?.model ?? '?') + '·어댑터 ' + (Object.keys(window.__jeffHealth?.adapters ?? {}).length) + '개' + ' | 포트2: ' + (window.__jeffHealth2?.model ?? '미연결') + ')';
+  srvstatus.textContent = '연결됨 — ' + srv + ' (포트1: ' + (window.__jeffHealth?.model ?? '?') + '·어댑터 ' + (Object.keys(window.__jeffHealth?.adapters ?? {}).length) + '개' + ' | 포트2: ' + (window.__jeffHealth2?.model ?? '미연결') + ' | 포트3: ' + (window.__jeffHealth3?.model ?? '미연결') + ')';
   renderCatalog();
   updateRunBtn();
 });
@@ -269,12 +278,15 @@ run.addEventListener('click', async () => {
     // 두 포트 병행: 카드가 srv2 대상이면 대형 베이스 서버(포트2)로 fetch — 어댑터/베이스 선택이 자동 enable/disable된다
     function targetSrv() {
       const c = CATALOG.find((x) => x.model === selectedModel);
-      return (c && c.srv2 && srv2) ? srv2 : srv;
+      if (c && c.srv3 && srv3) return srv3;   // gemma4 → 포트3
+      if (c && c.srv2 && srv2) return srv2;   // 2B → 포트2
+      return srv;
     }
     function targetHeaders() {
       const c = CATALOG.find((x) => x.model === selectedModel);
       const h = Object.assign({}, headers);
-      if (c && c.srv2 && srv2 && key2) { h['Authorization'] = 'Bearer ' + key2; }
+      if (c && c.srv3 && srv3 && key3) { h['Authorization'] = 'Bearer ' + key3; }
+      else if (c && c.srv2 && srv2 && key2) { h['Authorization'] = 'Bearer ' + key2; }
       return h;
     }
     let res = await send(orders !== undefined && orders !== 1);
@@ -364,10 +376,10 @@ function renderResults(out, ms) {
 
 renderCatalog();
 (async () => {  // 부팅 자동 연결 — UI 유무 무관
-  const res = await refreshInstalled(srv, key, srv2, key2);
+  const res = await refreshInstalled(srv, key, srv2, key2, srv3, key3);
   if (res) {
     installedModels = res;
-    srvstatus.textContent = '연결됨 — ' + srv + ' (모델 ' + (window.__jeffHealth?.model ?? '?') + ', 어댑터 ' + Object.keys(window.__jeffHealth?.adapters ?? {}).length + '개)';
+    srvstatus.textContent = '연결됨 — 포트1: ' + (window.__jeffHealth?.model ?? '?') + '·어댑터 ' + Object.keys(window.__jeffHealth?.adapters ?? {}).length + '개 | 포트2: ' + (window.__jeffHealth2?.model ?? '미연결') + ' | 포트3: ' + (window.__jeffHealth3?.model ?? '미연결');
     srvstatus.className = 'status';
   } else {
     srvstatus.textContent = '연결 실패 — ' + (window.__lastConnErr || '네트워크') + ' (' + srv + ')\n노트북 jeff-serve 꺼짐 확인 — 서버 설정에서 URL 수정 가능';

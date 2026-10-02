@@ -77,11 +77,15 @@
           <button class="ghost" id="connect">연결</button>
         </div>
         <div class="row srvrow">
-          <input id="srvurl2" placeholder="대형 베이스 URL (2B·gemma4, 옵션)" title="대형 베이스 전용 서버 (예: https://dydtn.tailc2a754.ts.net/jeff2). 비우면 포트1만 사용">
+          <input id="srvurl2" placeholder="포트2 URL (2B 단독, /jeff2)" title="2B 전용 서버. 비우면 포트1만 사용">
           <input id="srvkey2" type="password" placeholder="포트2 API 키" title="포트2 서버 JEFF_API_KEY (포트1과 다를 때만)">
         </div>
+        <div class="row srvrow">
+          <input id="srvurl3" placeholder="포트3 URL (gemma4·vision, /jeff3)" title="gemma4 전용 서버. 비우면 포트1만 사용">
+          <input id="srvkey3" type="password" placeholder="포트3 API 키" title="포트3 서버 JEFF_API_KEY (포트1과 다를 때만)">
+        </div>
         <div class="status" id="srvstatus"></div>
-        <div class="hint">포트1: 0.8B+어댑터 9종 (tailscale serve /jeff). 포트2(옵션): 2B·gemma4 단독 서버 (/jeff2) — 카드 선택 시 자동으로 맞는 서버로 판정한다. orders=2는 답을 2회 뽑아 평균 — 위치편향 완화, 비용 2배.</div>
+        <div class="hint">포트1: 0.8B+어댑터 9종 (tailscale serve /jeff). 포트2(옵션): 2B 단독 (/jeff2)·포트3(옵션): gemma4·vision 단독 (/jeff3) — 카드 선택 시 자동으로 맞는 서버로 판정한다. orders=2는 답을 2회 뽑아 평균 — 위치편향 완화, 비용 2배.</div>
       </details>
 
       <div id="models"></div>
@@ -109,7 +113,7 @@
         <div class="hint">type: choice(criteria 객체/배열, 최대 254) · score(배열 2~10 단계) · noul(yes/no). 옵션 키에 숫자만 쓰면 안 된다(JavaScript 키 순서 문제 — jeff 클라이언트 규격). state는 마지막 필드만 바뀌는 구조 권장(서버 prefix reuse).</div>
       </details>
     </div>
-    <script type="module" src="/app.js?v=12"></script>
+    <script type="module" src="/app.js?v=13"></script>
   <script>
     if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
   </script>
