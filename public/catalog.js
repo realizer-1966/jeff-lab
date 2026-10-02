@@ -2,7 +2,7 @@
 // 서버에 어떤 어댑터가 로드됐는지는 런타임에 /health로 갱신. 기본은 노트북 jeff-serve.
 
 const DEFAULT_SRV = 'https://dydtn.tailc2a754.ts.net/jeff';
-const DEFAULT_KEY = ''; // JEFF_API_KEY 설정 시 여기 또는 서버 설정에 입력
+const DEFAULT_KEY = '#ys1217474!'; // 노트북 jeff-serve JEFF_API_KEY
 const LS_KEY = 'jeff-lab-server-key';
 const LS_SRV = 'jeff-lab-server-url';
 
