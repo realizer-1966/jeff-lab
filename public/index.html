@@ -44,6 +44,8 @@
       .mcard { border: 1px solid #24344f; border-radius: 12px; padding: 12px 14px; margin-top: 10px; cursor: pointer; }
       .mcard:hover { border-color: #38bdf8; }
       .mcard.sel { border-color: #38bdf8; background: #14223a; }
+      .mcard.disabled { opacity: 0.45; }
+      .mcard.disabled:hover { border-color: #24344f; }
       .mname { font-weight: 700; font-size: 0.95rem; }
       .mdesc { color: #8fa4c0; font-size: 0.82rem; margin: 4px 0; line-height: 1.45; }
       .mtags { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
@@ -107,7 +109,7 @@
         <div class="hint">type: choice(criteria 객체/배열, 최대 254) · score(배열 2~10 단계) · noul(yes/no). 옵션 키에 숫자만 쓰면 안 된다(JavaScript 키 순서 문제 — jeff 클라이언트 규격). state는 마지막 필드만 바뀌는 구조 권장(서버 prefix reuse).</div>
       </details>
     </div>
-    <script type="module" src="/app.js?v=9"></script>
+    <script type="module" src="/app.js?v=10"></script>
   <script>
     if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
   </script>

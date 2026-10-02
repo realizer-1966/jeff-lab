@@ -1,5 +1,5 @@
 // jeff-lab - server connect + adapter catalog + question editor + decide
-import { CATALOG, DEFAULT_SRV, DEFAULT_SRV2, DEFAULT_KEY, LS_KEY, LS_KEY2, LS_SRV, LS_SRV2, refreshInstalled } from './catalog.js?v=9';
+import { CATALOG, DEFAULT_SRV, DEFAULT_SRV2, DEFAULT_KEY, LS_KEY, LS_KEY2, LS_SRV, LS_SRV2, refreshInstalled } from './catalog.js?v=10';
 
 const $ = (id) => document.getElementById(id);
 const srvurl = $('srvurl'), srvkey = $('srvkey'), connect = $('connect'),
@@ -9,6 +9,8 @@ const srvstatus = $('srvstatus'), status = $('status');
 const run = $('run'), models = $('models');
 const qjson = $('qjson'), presetSel = $('preset');
 
+let selectedBase = 'jeff-0.8b';   // 현재 선택된 베이스 카드 — 어댑터 enable 판정 기준
+const ADAPTER_HOST_BASE = 'jeff-0.8b';   // 어댑터 9종의 전용 베이스 (0.8B v1.2)
 let srv = localStorage.getItem(LS_SRV) || DEFAULT_SRV;
 let srv2 = localStorage.getItem(LS_SRV2) || DEFAULT_SRV2;   // 대형 베이스 서버(2B·gemma4)
 // 구버전 http 저장값 마이그레이션 - mixed content로 브라우저 fetch 불가
@@ -56,9 +58,15 @@ hasSrvUI && connect.addEventListener('click', async () => {
   updateRunBtn();
 });
 
+function adapterEnabled(c) {
+  // 어댑터는 전용 베이스(0.8B v1.2)가 선택된 경우에만 enable — 2B·gemma4 선택 시 disable
+  return selectedBase === ADAPTER_HOST_BASE;
+}
+
 function badge(c) {
   if (installedModels === null) return '<span class="badge missing">연결 필요</span>';
   if (c.family === 'base') return c.installed ? '<span class="badge ok">서빙 중</span>' : '<span class="badge missing">재기동 필요</span>';
+  if (!adapterEnabled(c)) return '<span class="badge missing">비활성 (0.8B 선택 필요)</span>';
   return c.installed ? '<span class="badge ok">로드됨</span>' : '<span class="badge missing">재기동 필요</span>';
 }
 
@@ -75,12 +83,14 @@ function renderCatalog() {
     models.appendChild(head);
     for (const c of g.cards) {
       const card = document.createElement('div');
-      card.className = 'mcard' + (installedModels && !c.installed ? ' missing' : '') + (selectedModel === c.model ? ' sel' : '');
+      const dis = (c.family !== 'base' && !adapterEnabled(c));   // 어댑터 비활성(베이스 불일치)
+      card.className = 'mcard' + (installedModels && !c.installed ? ' missing' : '') +
+        (selectedModel === c.model ? ' sel' : '') + (dis ? ' disabled' : '');
       card.innerHTML =
         '<div class="mname">' + c.model + ' ' + badge(c) + '</div>' +
         '<div class="mdesc">' + c.desc + '</div>' +
         '<div class="mtags conf">' + '최대옵션=' + (c.maxOptions ?? '?') + '</div>';
-      card.addEventListener('click', () => selectModel(c));
+      if (!dis) card.addEventListener('click', () => selectModel(c));
       models.appendChild(card);
     }
   }
@@ -88,6 +98,9 @@ function renderCatalog() {
 
 async function selectModel(c) {
   selectedModel = c.model;
+  if (c.family === 'base') {
+    selectedBase = c.model;   // 어댑터 enable 기준 갱신 — 0.8b 외 베이스면 어댑터 카드 전체 비활성화
+  }
   if (installedModels && !c.installed) {
     if (c.family === 'base' && c.srv2) {
       const hint = '이 카드는 대형 베이스 전용 서버(포트2, /jeff2)에서 서빙 중이 아니다.\n\n' +
