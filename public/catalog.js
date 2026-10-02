@@ -83,13 +83,15 @@ async function refreshInstalled(srv, key, srv2, key2, srv3, key3) {
     const servingName = (j.model ?? '').toLowerCase();
     const serving2 = ((window.__jeffHealth2 || {}).model || '').toLowerCase();
     const serving3 = ((window.__jeffHealth3 || {}).model || '').toLowerCase();   // gemma4 · vision
+    // 하이픈 정규화 — 서빙명 jeff-gemma-4-e2b-it과 카드별명 gemma4-e2b 불일치 해소 (gemma-4 ≈ gemma4)
+    const norm = (s) => (s ?? '').replace(/-/g, '');
+    const ns2 = norm(serving2), ns3 = norm(serving3), ns1 = norm(servingName);
     for (const c of CATALOG) {
       if (c.family === 'base') {
-        const alias = c.model.replace('jeff-', '');
-        const alias2 = alias.replace('-e2b', '');
-        if (c.srv3) c.installed = serving3.includes(alias) || serving3.includes(alias2);        // 포트3 (gemma4)
-        else if (c.srv2) c.installed = serving2.includes(alias) || serving2.includes(alias2);   // 포트2 (2B)
-        else c.installed = servingName.includes(alias) || servingName.includes(alias2);         // 포트1 (0.8B)
+        const na = norm(c.model.replace('jeff-', '').replace('-e2b', ''));   // 08b / 2b / gemma4e2b → gemma4
+        if (c.srv3) c.installed = ns3.includes(na);
+        else if (c.srv2) c.installed = ns2.includes(na);
+        else c.installed = ns1.includes(na);
       } else {
         c.installed = installed.has(c.model);
       }
