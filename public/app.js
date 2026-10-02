@@ -1,5 +1,5 @@
 // jeff-lab - server connect + adapter catalog + question editor + decide
-import { CATALOG, DEFAULT_SRV, DEFAULT_KEY, LS_KEY, LS_SRV, refreshInstalled } from './catalog.js?v=5';
+import { CATALOG, DEFAULT_SRV, DEFAULT_KEY, LS_KEY, LS_SRV, refreshInstalled } from './catalog.js?v=6';
 
 const $ = (id) => document.getElementById(id);
 const srvurl = $('srvurl'), srvkey = $('srvkey'), connect = $('connect');
@@ -229,14 +229,27 @@ run.addEventListener('click', async () => {
     };
     let res = await send(orders !== undefined && orders !== 1);
     if (res.status === 422) {
-      // 구형 서버(v1.1: 어댑터·orders 없음) — orders 필드가 서버에 없으면 extra_forbidden 422가 온다.
-      // orders 없이 재시도 (사용자에게 정밀판정이 불가한 서버임을 상태줄로 알린다).
+      // 구형 서버(v1.1: 어댑터·orders 없음) — extra_forbidden 422 → orders 없이 재시도.
       const errText = await res.clone().text();
       let isOrdersErr = false;
       try { isOrdersErr = (errText || '').includes('orders'); } catch { }
       res = await send(false);
       if (res.ok) usedOrders = 1;
       window.__lastOrdersFallback = isOrdersErr;
+    }
+    if (res.status === 400 || res.status === 422) {
+      // v1.2 서버: 카탈로그의 옛 base 카드명(jeff-0.8b 등)을 모르면 Unknown model → 베이스 폴백
+      const t2 = await res.clone().text();
+      if ((t2 || '').includes('Unknown model')) {
+        const sendB = (withOrders) => {
+          const body = { model: 'jeff-latest', state: text, questions: questions };
+          if (withOrders) body.orders = orders;
+          return fetch(srv + '/v1/systemone', { method: 'POST', headers, body: JSON.stringify(body) });
+        };
+        res = await sendB(orders !== undefined && orders !== 1);
+        if (res.status === 422) res = await sendB(false);
+        if (res.ok) usedOrders = orders;
+      }
     }
     if (!res.ok) {
       let msg = res.status;
