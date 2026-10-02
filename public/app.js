@@ -1,5 +1,5 @@
 // jeff-lab - server connect + adapter catalog + question editor + decide
-import { CATALOG, DEFAULT_SRV, DEFAULT_SRV2, DEFAULT_KEY, LS_KEY, LS_KEY2, LS_SRV, LS_SRV2, refreshInstalled } from './catalog.js?v=10';
+import { CATALOG, DEFAULT_SRV, DEFAULT_SRV2, DEFAULT_KEY, LS_KEY, LS_KEY2, LS_SRV, LS_SRV2, refreshInstalled } from './catalog.js?v=11';
 
 const $ = (id) => document.getElementById(id);
 const srvurl = $('srvurl'), srvkey = $('srvkey'), connect = $('connect'),
@@ -117,6 +117,15 @@ async function selectModel(c) {
   renderCatalog();
   if (c.example) {
     qjson.value = JSON.stringify(c.example, null, 2);
+  }
+  // 상황(state) 예시 — 카드에 맞는 언어로 자동 채움 (어댑터: 영어·공식 검증 언어, 베이스: 한국어 + Alt 영어)
+  const textEl = $('text');
+  if (c.stateSample) {
+    textEl.value = c.stateSample;
+    const note = c.family === 'base'
+      ? (selectedModel.endsWith('-e2b') ? 'vision 예시 (이미지 첨부 시)' : '한국어 예시 적용 — Alt 샘플: ' + (c.stateSampleAlt ? '' : '없음'))
+      : '영어 예시 적용 (공식 검증 언어)';
+    status.textContent = selectedModel + ' 선택됨 — ' + note;
   }
   updateRunBtn();
   if (!status.className.includes('err')) status.className = 'status';
