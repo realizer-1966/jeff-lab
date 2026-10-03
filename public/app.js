@@ -1,5 +1,5 @@
 // jeff-lab - server connect + adapter catalog + question editor + decide
-import { CATALOG, DEFAULT_SRV, DEFAULT_SRV2, DEFAULT_SRV3, DEFAULT_KEY, LS_KEY, LS_KEY2, LS_KEY3, LS_SRV, LS_SRV2, LS_SRV3, refreshInstalled } from './catalog.js?v=14';
+import { CATALOG, DEFAULT_SRV, DEFAULT_SRV2, DEFAULT_SRV3, DEFAULT_KEY, LS_KEY, LS_KEY2, LS_KEY3, LS_SRV, LS_SRV2, LS_SRV3, refreshInstalled } from './catalog.js?v=15';
 
 const $ = (id) => document.getElementById(id);
 const srvurl = $('srvurl'), srvkey = $('srvkey'), connect = $('connect'),
@@ -133,7 +133,7 @@ async function selectModel(c) {
     textEl.value = c.stateSample;
     const note = c.family === 'base'
       ? (selectedModel.endsWith('-e2b') ? 'vision 예시 (이미지 첨부 시)' : '한국어 예시 적용 — Alt 샘플: ' + (c.stateSampleAlt ? '' : '없음'))
-      : '영어 예시 적용 (공식 검증 언어)';
+      : (selectedModel.startsWith('ko-') ? '한국어 예시 적용 (한국어 전용 어댑터)' : '영어 예시 적용 (공식 검증 언어)');
     status.textContent = selectedModel + ' 선택됨 — ' + note;
   }
   updateRunBtn();

@@ -1,4 +1,4 @@
-// jeff-lab catalog - Jeff base models + 9 LoRA adapters
+// jeff-lab catalog - Jeff base models + 12 LoRA adapters (영어 9 + 한국어 3)
 // 서버에 어떤 어댑터가 로드됐는지는 런타임에 /health로 갱신. 기본은 노트북 jeff-serve.
 
 const DEFAULT_SRV = 'https://dydtn.tailc2a754.ts.net/jeff';
@@ -49,6 +49,16 @@ const CATALOG = [
   { family: 'legal-clauses', model: 'legal-clauses', desc: '계약 조항 유형 분류 — 87.8%', engine: 'pytorch', maxOptions: 20, adapter: true,
     stateSample: 'Either party may terminate this Agreement with thirty (30) days\' written notice to the other party.',
     example: { clause: { type: 'choice', instructions: 'What type of contract clause is this?', criteria: { payment: 'Payment terms', liability: 'Limitation of liability', termination: 'Termination conditions', confidentiality: 'Confidentiality' } } } },
+  // 한국어 어댑터 3종 (ko-*, 노트북 학습·2026-10-02~03 운영) — 라벨 세트는 학습 spec 기준
+  { family: 'ko-triage', model: 'ko-triage', desc: '한국어 고객 문의 트리지 (환불/배송/계정/기타) — 학습팩 v3', engine: 'pytorch', maxOptions: 4, adapter: true,
+    stateSample: '택배가 계속 순환 중이라고 하는데 언제 올지 알 수 있나요?',
+    example: { priority: { type: 'choice', instructions: '이 고객 문의를 담당 단위에 배정하세요.', criteria: { refund: '환불, 중복 결제, 돈을 돌려받는 문제', delivery: '배송, 배송 조회, 주소 변경 등 물건 전달 문제', account: '로그인, 비밀번호, 회원 정보 등 계정 문제', other: '위 어느 팀에도 해당하지 않는 문의' } } } },
+  { family: 'ko-spam', model: 'ko-spam', desc: '한국어 스팸·피싱 분류 (스팸/정상/판단곤란)', engine: 'pytorch', maxOptions: 3, adapter: true,
+    stateSample: '공짜 쿠폰 드립니다. 아래 링크 클릭해서 받으세요',
+    example: { cls: { type: 'choice', instructions: '이 문자를 분류하세요.', criteria: { spam: '스팸·피싱', ham: '정상 문자', unknown: '판단 곤란' } } } },
+  { family: 'ko-emotion', model: 'ko-emotion', desc: '한국어 댓글 감정 분류 (8종)', engine: 'pytorch', maxOptions: 8, adapter: true,
+    stateSample: '오늘 정말 최고네요! 감사합니다',
+    example: { emotion: { type: 'choice', instructions: '이 댓글의 감정을 분류하세요.', criteria: { 기쁨: '기쁨·즐거움', 불안: '불안·걱정', 분노: '분노·짜증', 슬픔: '슬픔', 중립: '특별한 감정 없음', 감동: '감동·감사', 지루함: '지루·무료', 놀람: '놀람' } } } },
 ];
 
 function headers2Of(key2, headers) {
